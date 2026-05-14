@@ -1,0 +1,58 @@
+﻿<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestor Financeiro - Login</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body style="font-family: Arial, sans-serif; text-align: center; margin-top: 100px;">
+
+    <h2>Gestor Financeiro WPP 💸</h2>
+    <p>Coloca o teu número de WhatsApp e faz login com o Google</p>
+
+    <input type="text" id="numeroWhatsapp" placeholder="+5511999999999"
+           style="padding: 10px; font-size: 16px; margin-bottom: 20px; width: 200px;">
+
+    <br>
+
+    <div id="g_id_onload"
+         data-client_id="647379081050-rkudk52lcars6b2najlan3h25n4ss9o4.apps.googleusercontent.com"
+         data-context="signin"
+         data-ux_mode="popup"
+         data-callback="lidarComRespostaGoogle"
+         data-auto_prompt="false">
+    </div>
+
+    <div class="g_id_signin" data-type="standard" style="display: flex; justify-content: center;"></div>
+
+    <script>
+        async function lidarComRespostaGoogle(response) {
+            const numero = document.getElementById('numeroWhatsapp').value;
+
+            if (!numero) {
+                alert("Calma aí, apressado! Digita o teu número do WhatsApp primeiro.");
+                return;
+            }
+
+            console.log("A enviar dados para a API C#...");
+
+            // Token do Google e o número para o nosso back-end
+            const respostaApi = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    googleToken: response.credential,
+                    telefone: numero
+                })
+            });
+
+            if (respostaApi.ok) {
+                alert("Sucesso! O C# recebeu os dados.");
+            } else {
+                alert("Ops, deu raia. O back-end recusou a encomenda.");
+            }
+        }
+    </script>
+
+</body>
+</html>
