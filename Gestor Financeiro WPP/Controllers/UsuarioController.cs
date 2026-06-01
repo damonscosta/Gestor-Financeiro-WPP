@@ -12,6 +12,16 @@ public class UsuarioController : ControllerBase {
 
     }
 
+    // Endpoint para verificar se um usuário já existe pelo email
+    // === Aplicado no IUsuarioRepository, UsuarioRepository e UsuarioAppService ===
+    [HttpGet("verificar-usuario")]
+    public async Task<IActionResult> VerficarUsuario([FromQuery] string email) {
+        var existe = await _appService.VerificarSeUsuarioExisteAsync(email);
+        return Ok(new { Existe = existe });
+    }
+
+
+
     [HttpPost("cadastrar")]
     public async Task<IActionResult> Cadastrar([FromBody] NovoUsuarioDTO request) 
         {
@@ -29,3 +39,4 @@ public class NovoUsuarioDTO {
     public string Telefone { get; set; } = string.Empty;
 }
 
+  

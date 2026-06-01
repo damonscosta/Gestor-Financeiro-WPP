@@ -7,4 +7,7 @@ public interface ITransacaoRepository {
     Task<Usuario> ObterUsuarioPorTelefoneAsync(string telefone);
     // O método mágico que calcula o saldo do usuário, somando as receitas e subtraindo as despesas. Ele é assíncrono porque pode envolver consultas ao banco de dados.
     Task<decimal> CalcularSaldoAsync(Guid usuarioId);
+    Task<string> ProcesssarMensagemAsync(string telefone, string mensagemRecebida);
+    Task<IEnumerable<object>> ObterPorUsuarioIdAsync(Guid usuarioId);
 }
+

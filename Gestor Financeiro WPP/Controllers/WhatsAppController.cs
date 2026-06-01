@@ -12,7 +12,7 @@ public class WhatsAppController : ControllerBase {
     public WhatsAppController(TransacaoAppService appService) {
         _appService = appService;
     }
-
+    // O endpoint que o Twilio vai chamar toda vez que receber uma mensagem no WhatsApp. Ele é um POST porque o Twilio envia os dados da mensagem no corpo da requisição.
     [HttpPost]
     [Consumes("application/x-www-form-urlencoded")]
     public async Task<IActionResult> ReceberMensagem([FromForm] string From, [FromForm] string Body) {

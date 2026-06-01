@@ -8,7 +8,13 @@ public class Usuario {
     public string Email { get; private set; }
     public string TelefoneWhatsapp { get; private set; }
 
-    protected Usuario() { }
+    // Inicializa propriedades não anuláveis com valores padrão para evitar CS8618
+    protected Usuario() {
+        Nome = string.Empty;
+        Cpf = string.Empty;
+        Email = string.Empty;
+        TelefoneWhatsapp = string.Empty;
+    }
     public Usuario(string nome, string cpf, string email, string telefone) {
         Id = Guid.NewGuid();
         Nome = nome;

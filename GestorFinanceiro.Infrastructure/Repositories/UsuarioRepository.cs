@@ -21,4 +21,10 @@ public class UsuarioRepository : IUsuarioRepository {
         // Busca no banco se o número do WhatsApp já existe
         return await _context.Usuarios.FirstOrDefaultAsync(u => u.TelefoneWhatsapp == telefone);
     }
+    // Implementação do método para verificar se um email já existe
+    // === Aplicado no IUsuarioRepository e no UsuarioAppService ===
+    public async Task<bool> ExisteEmailAsync(string email) {
+        return await _context.Usuarios.AnyAsync(u => u.Email == email);
+    }
 }
+

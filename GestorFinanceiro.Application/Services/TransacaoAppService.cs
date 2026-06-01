@@ -1,67 +1,114 @@
-﻿using GestorFinanceiro.Domain.Entities;
-using GestorFinanceiro.Domain.Enums;
-using GestorFinanceiro.Domain.Interfaces;
+﻿using System;
+using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using GestorFinanceiro.Domain.Entities;
+using GestorFinanceiro.Domain.Interfaces;
+using GestorFinanceiro.Domain.Enums;
 
-namespace GestorFinanceiro.Application.Services;
+namespace GestorFinanceiro.Application.Services {
+    public class TransacaoAppService : ITransacaoAppService {
+        private readonly ITransacaoRepository _transacaoRepository;
+        private readonly IUsuarioRepository _usuarioRepository;
 
-public class TransacaoAppService {
-    private readonly ITransacaoRepository _repository;
-
-    // Injeção de Dependência: O serviço pede o repositório, mas não sabe qual banco é.
-    public TransacaoAppService(ITransacaoRepository repository) {
-        _repository = repository;
-    }
-
-    public async Task<string> ProcessarMensagemAsync(string telefone, string mensagemTexto) {
-        //Verificar se o usuário dono deste telefone existe no banco
-        var usuario = await _repository.ObterUsuarioPorTelefoneAsync(telefone);
-        if (usuario == null) {
-            return "Usuário não encontrado. Por favor, cadastre seu número no portal.";
+        // Construtor com Injeção de Dependências
+        public TransacaoAppService(ITransacaoRepository transacaoRepository, IUsuarioRepository usuarioRepository) {
+            _transacaoRepository = transacaoRepository;
+            _usuarioRepository = usuarioRepository;
         }
 
-        //Interpretar a mensagem 
-        var mensagem = mensagemTexto.ToLower();
-        TipoTransacao tipo;
+        // 1. MÉTODO QUE LÊ A MENSAGEM, EXTRAI O VALOR E INVENTA A CATEGORIA
+        public async Task<string> ProcessarMensagemAsync(string telefone, string mensagemRecebida) {
+            var usuario = await _usuarioRepository.ObterPorTelefoneAsync(telefone);
+            if (usuario == null) return "Usuário não encontrado. Por favor, cadastre seu número no portal.";
 
-        if (mensagemTexto.Trim().Equals("saldo", StringComparison.OrdinalIgnoreCase)) {
-            var saldoFinal = await _repository.CalcularSaldoAsync(usuario.Id);
-            return $"💰 O seu saldo atual é de R$ {saldoFinal:N2}";
+            string mensagemWpp = mensagemRecebida.ToLower().Trim();
+
+            // Verifica se ele quer o relatório
+            if (mensagemWpp == "relatorio" || mensagemWpp == "relatório") {
+                return await GerarRelatorioAsync(usuario.Id);
+            }
+
+            TipoTransacao? tipoTransacao = null;
+            string tipoDescricao = "";
+            if (mensagemWpp.StartsWith("gastei, gasto, despesa")) {
+                tipoTransacao = TipoTransacao.Despesa;
+                tipoDescricao = "Gasto";
+            }
+            else if (mensagemWpp.StartsWith("ganhei, ganho, lucro")) {
+                tipoTransacao = TipoTransacao.Receita;
+                tipoDescricao = "Ganho";
+            }
+
+            if (tipoTransacao.HasValue) {
+                // Regex "pesca" o número
+                Match matchValor = Regex.Match(mensagemWpp, @"\d+(,\d+)?");
+                if (!matchValor.Success) return "Não consegui identificar o valor. Tente algo como 'gastei 50 ifood'.";
+
+                decimal valor = Convert.ToDecimal(matchValor.Value);
+
+                // A Categoria será TUDO o que sobrar na frase!
+                string categoria = mensagemWpp
+                    .Replace("ganhei, ganho, lucro", "")
+                    .Replace("ganhei, ganho, lucro", "")
+                    .Replace(matchValor.Value, "")
+                    .Replace("$", "")
+                    .Replace(" em ", " ")
+                    .Trim();
+
+                if (string.IsNullOrWhiteSpace(categoria)) {
+                    categoria = "Geral";
+                }
+                else {
+                    categoria = char.ToUpper(categoria[0]) + categoria.Substring(1);
+                }
+
+                // Cria e guarda a transação no banco
+                var novaTransacao = new Transacao {
+                    UsuarioId = usuario.Id,
+                    Valor = valor,
+                    Tipo = tipoTransacao.Value,
+                    Categoria = categoria,
+                    DataCriacao = DateTime.Now
+                };
+
+                await _transacaoRepository.AdicionarAsync(novaTransacao);
+
+                return $"✅ Registado com sucesso!\nTipo: {tipoDescricao}\nValor: R$ {valor}\nCategoria: {categoria}";
+            }
+
+            return "Comando não reconhecido. Diga 'gastei [valor] [categoria]', 'ganhei [valor] [categoria]' ou 'relatorio'.";
         }
 
-        // palavras-chave
-        if (mensagem.Contains("ganhei") || mensagem.Contains("recebi") || mensagem.Contains("lucro")) {
-            tipo = TipoTransacao.Receita;
+        // 2. MÉTODO QUE FAZ A MATEMÁTICA E AGRUPA TUDO (O RELATÓRIO)
+        private async Task<string> GerarRelatorioAsync(Guid usuarioId) {
+            var transacoes = await _transacaoRepository.ObterPorUsuarioIdAsync(usuarioId);
+
+            if (!transacoes.Any()) return "Você ainda não possui nenhuma transação registada.";
+
+            var gastos = transacoes.Cast<Transacao>().Where(static t => t.Tipo == TipoTransacao.Despesa).ToList();
+            var ganhos = transacoes.Cast<Transacao>().Where(t => t.Tipo == TipoTransacao.Receita).ToList();
+
+            var totalGasto = gastos.Sum(t => t.Valor);
+            var totalGanho = ganhos.Sum(t => t.Valor);
+
+            string resposta = " *SEU RELATÓRIO FINANCEIRO* \n\n";
+
+            resposta += $" *GASTOS TOTAIS: R$ {totalGasto}*\n";
+            var gastosAgrupados = gastos.GroupBy(t => t.Categoria);
+            foreach (var grupo in gastosAgrupados) {
+                resposta += $" ➖ {grupo.Key}: R$ {grupo.Sum(t => t.Valor)}\n";
+            }
+
+            resposta += $"\n *GANHOS TOTAIS: R$ {totalGanho}*\n";
+            var ganhosAgrupados = ganhos.GroupBy(t => t.Categoria);
+            foreach (var grupo in ganhosAgrupados) {
+                resposta += $" ➕ {grupo.Key}: R$ {grupo.Sum(t => t.Valor)}\n";
+            }
+
+            resposta += $"\n *SALDO FINAL: R$ {totalGanho - totalGasto}*";
+
+            return resposta;
         }
-        else if (mensagem.Contains("gastei") || mensagem.Contains("perdi") || mensagem.Contains("paguei")) {
-            tipo = TipoTransacao.Despesa;
-        }
-        else {
-            return "🤖 Não entendi. Tente começar a frase com 'ganhei', 'recebi', 'gastei' ou 'perdi'.";
-
-
-        }
-
-        //Extrair o Valor usando Regex (Procura qualquer sequência de números, com ou sem vírgula/ponto)
-        var matchValor = Regex.Match(mensagem, @"\d+([.,]\d+)?");
-        if (!matchValor.Success) {
-            return "🤖 Não consegui identificar o valor. Tente algo como 'gastei 50 com almoço'.";
-        }
-
-        // Converte o texto encontrado para decimal (garantindo que entenda ponto ou vírgula)
-        decimal valor = decimal.Parse(matchValor.Value.Replace(".", ","));
-
-        //A descrição será a própria mensagem original para não perdermos o contexto
-        string descricao = mensagemTexto;
-
-        // Criar a entidade 
-        var novaTransacao = new Transacao(usuario.Id, valor, descricao, DateTime.Now, tipo);
-
-        // Salvar no banco
-        await _repository.AdicionarAsync(novaTransacao);
-
-        // 7. Retornar a resposta que o Twilio enviará de volta pro WhatsApp
-        string tipoTexto = tipo == TipoTransacao.Receita ? "Receita 📈" : "Despesa 📉";
-        return $"✅ {tipoTexto} de R$ {valor} registrada com sucesso!";
     }
 }
